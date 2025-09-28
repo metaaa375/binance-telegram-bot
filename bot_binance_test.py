@@ -1,4 +1,4 @@
-import threading
+import threading 
 import asyncio
 from flask import Flask
 from telegram import Bot
@@ -52,7 +52,7 @@ def job():
     for msg in annonces:
         asyncio.run(bot.send_message(chat_id=CHAT_ID, text=msg))
 
-# Scheduler : 1 fois par jour à 9h (UTC)
+# ⚡ Scheduler : envoi à 9h, 12h, 15h et 21h (UTC)
 schedule.every().day.at("09:00").do(job)
 schedule.every().day.at("12:00").do(job)
 schedule.every().day.at("15:00").do(job)
@@ -71,6 +71,8 @@ if __name__ == "__main__":
     threading.Thread(target=run_schedule, daemon=True).start()
 
     # Flask maintient le service "vivant" pour Render
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
 
 
