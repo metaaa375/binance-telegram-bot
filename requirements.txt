@@ -1,4 +1,6 @@
-python-telegram-bot==20.3
-requests==2.31.0
-schedule==1.2.1
+python-telegram-bot==20.7
+schedule
+flask
+requests
+
 
