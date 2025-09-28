@@ -1,71 +1,60 @@
-import threading
-import asyncio
-from flask import Flask
-from telegram import Bot
-import os
-import schedule
-import time
 import requests
+import time
+import os
+import telegram
 
-# ⚠️ Variables d'environnement à configurer sur Render :
-# TELEGRAM_TOKEN = ton token du bot
-# CHAT_ID = ton chat_id Telegram
-
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+# Config Telegram
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-bot = Bot(token=TOKEN)
+bot = telegram.Bot(token=BOT_TOKEN)
 
-app = Flask(__name__)
+# URL des annonces Binance
+BINANCE_URL = "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=5"
 
-@app.route("/")
-def home():
-    return "✅ Bot Binance Listings tourne sur Render gratuitement !"
+# Fichier pour stocker le dernier ID
+LAST_ID_FILE = "last_id.txt"
 
-# Fonction pour récupérer les annonces Binance
-def fetch_binance_announcements():
-    url = "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query"
-    params = {"type": 1, "catalogId": 48, "pageNo": 1, "pageSize": 5}  # section New Cryptocurrency Listings
+def get_last_id():
+    """Lire le dernier ID sauvegardé (si existe)."""
+    if os.path.exists(LAST_ID_FILE):
+        with open(LAST_ID_FILE, "r") as f:
+            return f.read().strip()
+    return None
 
+def save_last_id(article_id):
+    """Sauvegarder le dernier ID."""
+    with open(LAST_ID_FILE, "w") as f:
+        f.write(str(article_id))
+
+def check_binance_announcements():
     try:
-        resp = requests.get(url, params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        response = requests.get(BINANCE_URL)
+        data = response.json()
 
-        articles = data.get("data", {}).get("articles", [])
+        articles = data["data"]["articles"]
         if not articles:
-            return ["⚠️ Aucune annonce trouvée."]
+            print("⚠️ Aucune annonce trouvée.")
+            return
 
-        messages = []
-        for art in articles:
-            title = art.get("title", "Sans titre")
-            link = "https://www.binance.com/en/support/announcement/" + art.get("code", "")
-            messages.append(f"🆕 {title}\n🔗 {link}")
+        # On prend la plus récente
+        latest = articles[0]
+        latest_id = str(latest["id"])
+        latest_title = latest["title"]
+        latest_url = "https://www.binance.com/fr/support/announcement/" + latest["code"]
 
-        return messages
+        last_id = get_last_id()
+
+        if last_id != latest_id:  # Si c’est une nouvelle annonce
+            message = f"🚨 Nouvelle annonce Binance :\n\n📌 {latest_title}\n🔗 {latest_url}"
+            bot.send_message(chat_id=CHAT_ID, text=message)
+            save_last_id(latest_id)
+        else:
+            print("✅ Pas de nouvelle annonce.")
 
     except Exception as e:
-        return [f"⚠️ Erreur lors de la récupération : {e}"]
-
-# Fonction qui envoie les annonces
-def job():
-    annonces = fetch_binance_announcements()
-    for msg in annonces:
-        asyncio.run(bot.send_message(chat_id=CHAT_ID, text=msg))
-
-# Scheduler : 1 fois par jour à 9h (UTC)
-schedule.every().day.at("09:00").do(job)
-
-def run_schedule():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+        print(f"⚠️ Erreur : {e}")
 
 if __name__ == "__main__":
-    # ⚡ Envoi immédiat au démarrage
-    job()
-
-    # Thread séparé pour exécuter le scheduler
-    threading.Thread(target=run_schedule, daemon=True).start()
-
-    # Flask maintient le service "vivant" pour Render
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    while True:
+        check_binance_announcements()
+        time.sleep(60)  # Vérifie toutes les minutes
