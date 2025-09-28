@@ -54,6 +54,9 @@ def job():
 
 # Scheduler : 1 fois par jour à 9h (UTC)
 schedule.every().day.at("09:00").do(job)
+schedule.every().day.at("12:00").do(job)
+schedule.every().day.at("15:00").do(job)
+schedule.every().day.at("21:00").do(job)
 
 def run_schedule():
     while True:
@@ -69,4 +72,5 @@ if __name__ == "__main__":
 
     # Flask maintient le service "vivant" pour Render
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
