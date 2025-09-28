@@ -1,15 +1,21 @@
+import asyncio
 import requests
 import schedule
 import time
 from telegram import Bot
 
-# Ton token de bot et ton chat_id
-BOT_TOKEN = "8271380593:AAEgKCuQluAOXYujVECjDZ2y698_rKLNNTc"
-CHAT_ID = 420284200  # Vérifie avec @userinfobot
-bot = Bot(token=BOT_TOKEN)
+# ========================
+# CONFIG
+# ========================
+TOKEN = "TON_TELEGRAM_BOT_TOKEN"   # <- remplace par ton vrai token
+CHAT_ID = 420284200                # <- remplace par ton vrai chat_id
+bot = Bot(token=TOKEN)
 
+
+# ========================
+# Récupération des annonces Binance
+# ========================
 def fetch_binance_announcements():
-    """Récupère les 5 dernières annonces Binance (nouvelles cryptos listées)."""
     url = "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query"
     params = {
         "type": 1,
@@ -19,49 +25,59 @@ def fetch_binance_announcements():
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            articles = data.get("data", {}).get("articles", [])
-            return articles
-        else:
-            print(f"⚠️ Erreur API Binance: {response.status_code}")
-            return None
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        articles = data.get("data", {}).get("articles", [])
+        if not articles:
+            return ["⚠️ Impossible de trouver les annonces Binance."]
+
+        messages = []
+        for article in articles:
+            title = article.get("title", "Sans titre")
+            link = "https://www.binance.com/en/support/announcement/" + article.get("code", "")
+            messages.append(f"🆕 {title}\n🔗 {link}")
+
+        return messages
+
     except Exception as e:
-        print("❌ Exception lors de la requête Binance:", e)
-        return None
+        return [f"❌ Erreur lors de la récupération : {e}"]
 
-def send_daily_update():
-    """Envoie un message Telegram avec les 5 dernières annonces."""
-    articles = fetch_binance_announcements()
-    if articles:
-        message = "📢 Dernières annonces Binance (listings) :\n\n"
-        for art in articles:
-            title = art.get("title", "Sans titre")
-            link = "https://www.binance.com/fr/support/announcement/" + art.get("code", "")
-            message += f"- {title}\n{link}\n\n"
-        try:
-            # ⚡ Utilisation de .send_message() synchrone
-            bot.send_message(chat_id=CHAT_ID, text=message)
-            print("✅ Message envoyé avec succès")
-        except Exception as e:
-            print("❌ Erreur envoi Telegram:", e)
-    else:
-        try:
-            bot.send_message(chat_id=CHAT_ID, text="⚠️ Impossible de trouver les annonces Binance.")
-            print("⚠️ Aucun article trouvé, message envoyé quand même")
-        except Exception as e:
-            print("❌ Erreur envoi Telegram (pas d'annonces):", e)
 
-if __name__ == "__main__":
-    # ⚡ ENVOI DE TEST IMMÉDIAT
-    send_daily_update()
+# ========================
+# Envoi d’un message
+# ========================
+async def send_message(text):
+    await bot.send_message(chat_id=CHAT_ID, text=text)
 
-    # Programmation : tous les jours à 09h00
-    schedule.every().day.at("09:00").do(send_daily_update)
 
-    print("✅ Bot démarré et en attente...")
+# ========================
+# Tâche programmée
+# ========================
+async def job():
+    announcements = fetch_binance_announcements()
+    for msg in announcements:
+        await send_message(msg)
+
+
+# ========================
+# Boucle principale
+# ========================
+async def scheduler():
+    # Planifie l'envoi une fois par jour à 9h UTC
+    schedule.every().day.at("09:00").do(lambda: asyncio.create_task(job()))
+
+    # 🔥 Envoi immédiat au démarrage pour test
+    await send_message("✅ Bot Binance démarré avec succès !")
+
     while True:
         schedule.run_pending()
-        time.sleep(60)
+        await asyncio.sleep(1)
+
+
+if __name__ == "__main__":
+    print("✅ Bot Binance lancé (Background Worker Render)...")
+    asyncio.run(scheduler())
+
 
